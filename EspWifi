@@ -1,0 +1,111 @@
+#include <WiFi.h>
+#include <WiFiClient.h>
+
+const char* ssid1     = "Mxxxx";
+const char* password1 = "xxxx";
+
+const char* ssid = "Nxxxx";
+const char* password = "xxxxxx";
+
+short time_out = 0;
+bool currentMode = false; // true == AccessPoint ... false == StationMode
+bool availableSTA = false; 
+
+void accessPoint() // AP mode
+{
+  Serial.print("Configuring access point...");
+  WiFi.softAP(ssid, password);
+  IPAddress myIP = WiFi.softAPIP();
+  Serial.print("AP IP address: ");
+  Serial.println(myIP);
+  currentMode = true;
+}
+
+void stationMode() // STA mode
+{
+  Serial.println();
+  Serial.println();
+  Serial.print("Connecting to ");
+  Serial.println(ssid1);
+
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(ssid1, password1);
+  currentMode = false;
+  // if cannot connect to home Wifi then switch to AP mode
+  Switch_STA_to_AP();
+}
+
+void connectWF() // connect to home Wifi first, if fail then switch to AP mode
+{
+  stationMode();
+
+  if (currentMode == false)
+  {
+    Serial.println("");
+    Serial.println("WiFi connected");
+    Serial.println("IP address: ");
+    Serial.println(WiFi.localIP());
+  }
+}
+
+void Switch_STA_to_AP() // check if cannot connect to home Wifi then switch to AP mode
+{
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    time_out++;
+    Serial.print(".");
+    if (time_out == 15)
+    {
+      accessPoint();
+      availableSTA = false;
+      time_out = 0;
+      break;
+    }
+  }
+}
+
+void scan_Networks() // scan if home Wifi available
+{
+  int count = 0;
+  int n = WiFi.scanNetworks();
+  if (n == 0) {
+    Serial.println("no networks found");
+  } 
+  else 
+  {
+    for (int i = 0; i < n; ++i) {
+      if (WiFi.SSID(i) == ssid1)
+      {
+        availableSTA = true;
+        count++;
+      }
+      delay(10);
+    }
+  }
+  if(count == 0)
+    availableSTA = false;
+}
+
+void setup() {
+  // put your setup code here, to run once:
+  Serial.begin(9600);
+  Serial.println();
+  connectWF();
+}
+
+void loop() {
+  // put your main code here, to run repeatedly:
+  scan_Networks();
+  if (availableSTA == false && currentMode == false) // if HOME WIFI NOT AVAILABLE and CURRENT MODE == STA
+    accessPoint();
+  if (availableSTA == true && currentMode == true) // if HOME WIFI AVAILABLE and CURRENT MODE == AP
+    stationMode();
+  if(currentMode == true)
+  {
+    Serial.println("AccessPoint");
+    Serial.println(WiFi.softAPgetStationNum());
+  }
+  else
+    Serial.println("STA");
+  delay(300);
+}
