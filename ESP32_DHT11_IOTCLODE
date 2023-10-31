@@ -1,0 +1,71 @@
+#include "thingProperties.h"
+#include "DHT.h"
+
+#define DHTPIN 14
+#define DHTTYPE DHT11
+DHT dht(DHTPIN, DHTTYPE);
+
+
+void setup() {
+  // Initialize serial and wait for port to open:
+  pinMode(2, OUTPUT);
+  dht.begin();
+  Serial.begin(9600);
+  // This delay gives the chance to wait for a Serial Monitor without blocking if none is found
+  delay(1500);
+
+  // Defined in thingProperties.h
+  initProperties();
+
+  // Connect to Arduino IoT Cloud
+  ArduinoCloud.begin(ArduinoIoTPreferredConnection);
+
+  /*
+     The following function allows you to obtain more information
+     related to the state of network and IoT Cloud connection and errors
+     the higher number the more granular information you’ll get.
+     The default is 0 (only errors).
+     Maximum is 4
+  */
+  setDebugMessageLevel(2);
+  ArduinoCloud.printDebugInfo();
+}
+
+void loop() {
+  ArduinoCloud.update();
+  DHT_SENSOR_READ();
+  // Your code here
+
+
+}
+
+/*
+  Since LED is READ_WRITE variable, onLEDChange() is
+  executed every time a new value is received from IoT Cloud.
+*/
+void onLEDChange()  {
+  if (LED == 1)
+  {
+    digitalWrite(2, HIGH);
+  }
+  else
+    digitalWrite(2, LOW);
+}
+// Add your code here to act upon LED change
+/*
+  Since Humidity is READ_WRITE variable, onHumidityChange() is
+  executed every time a new value is received from IoT Cloud.
+*/
+void DHT_SENSOR_READ()
+{
+  float h = dht.readHumidity();
+  float t = dht.readTemperature();
+
+  temperature = t;
+  humidity = h;
+
+  Serial.print("Temperature - "); Serial.println(t);
+  Serial.print("Humidity - "); Serial.println(h);
+  delay(1000);
+  // Add your code here to act upon Humidity change
+}
