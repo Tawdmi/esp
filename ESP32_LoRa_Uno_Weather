@@ -1,0 +1,140 @@
+Arduino Code:
+#include <SPI.h> //SPI Library 
+#include <LoRa.h> //LoRa Library 
+#include <LiquidCrystal.h> //Library for LCD
+const int rs = 8, en = 7, d4 = 6, d5 = 5, d6 = 4, d7 = 3; //Mention the pin number for LCD connection
+LiquidCrystal lcd(rs, en, d4, d5, d6, d7);//Initialize LCD method
+void setup() {
+  Serial.begin(9600); //Serial for Debugging 
+  lcd.begin(16, 2); //Initialise 16*2 LCD
+  lcd.print("Arduino"); //Intro Message line 1
+  Serial.print("Arduino"); //Intro Message line 1
+  lcd.setCursor(0, 1);
+  lcd.print("Receiver"); //Intro Message line 2
+  delay(2000);
+  if (!LoRa.begin(433E6)) { //Operate on 433MHz
+    Serial.println("Starting LoRa failed!");
+    lcd.print("LoRa Failed");
+    while (1);
+  }
+}
+void loop() {
+  int packetSize = LoRa.parsePacket();
+ // lcd.print("LoRa");
+  if (packetSize) {     // If packet received
+    Serial.print("Received packet '");
+    lcd.clear();
+    while (LoRa.available()) {
+      char incoming = (char)LoRa.read();
+      if (incoming == 'c')
+      {
+        lcd.setCursor(0, 1);
+      }
+      else
+      {
+        lcd.print(incoming);
+        Serial.print(incoming);
+      }
+    }
+  }
+}
+
+ESP32 Code:
+#include <HTTPClient.h>
+#include <WiFi.h>
+#include <ArduinoJson.h>
+#include <SPI.h>
+#include <LoRa.h>
+#include <Wire.h>
+#include<SH1106.h>  
+SH1106 display(0x3c, 21, 22);
+const char* ssid = "Xuan Ba";
+const char* pass = "ghns5h";
+int count;
+//define the pins used by the transceiver module
+#define ss 5
+#define rst 14
+#define dio0 2
+const char* url = "http://api.weatherapi.com/v1/current.json?key=ade61a8aef37445d8c0100632202335&q=Jaipur";
+void setup() {
+  Serial.begin(115200);
+  delay(2000);
+  Serial.println("Connecting to ");
+  Serial.println(ssid);
+  WiFi.begin(ssid, pass);
+  while (WiFi.status() != WL_CONNECTED)
+  {
+    delay(500);
+    Serial.print(".");              // print ... till not connected
+  }
+  Serial.println("WiFi connected");
+  Serial.println("LoRa Sender");
+  LoRa.setPins(ss, rst, dio0);
+  while (!LoRa.begin(433E6)) {
+    Serial.println(".");
+    delay(500);
+  }
+   // Change sync word (0xF3) to match the receiver
+  // The sync word assures you don't get LoRa messages from other LoRa transceivers
+  // ranges from 0-0xFF
+  LoRa.setSyncWord(0xF3);
+  Serial.println("LoRa Initializing OK!");
+  display.init();
+  display.flipScreenVertically();
+  display.setFont(ArialMT_Plain_10);
+}
+void loop() {
+  HTTPClient https;
+  String data;
+  https.begin(url);
+  int httpCode = https.GET();
+  if (httpCode > 0) { //Check for the returning code
+    String payload = https.getString();
+    char charBuf[500];
+    payload.toCharArray(charBuf, 500);
+    //Serial.println(payload);
+  const size_t capacity = JSON_OBJECT_SIZE(2) + JSON_OBJECT_SIZE(3) + JSON_OBJECT_SIZE(8) + JSON_OBJECT_SIZE(23) + 490;
+  DynamicJsonDocument doc(capacity);
+  const char* json = "{\"location\":{\"name\":\"Hanoi\",\"region\":\"Hanoi\",\"country\":\"Vietnam\",\"lat\":26.92,\"lon\":75.82,\"tz_id\":\"Asia/Kolkata\",\"localtime_epoch\":1595741089,\"localtime\":\"2020-07-26 10:54\"},\"current\":{\"last_updated_epoch\":1595740520,\"last_updated\":\"2020-07-26 10:45\",\"temp_c\":31,\"temp_f\":87.8,\"is_day\":1,\"condition\":{\"text\":\"Mist\",\"icon\":\"//cdn.weatherapi.com/weather/64x64/day/143.png\",\"code\":1030},\"wind_mph\":0,\"wind_kph\":0,\"wind_degree\":0,\"wind_dir\":\"N\",\"pressure_mb\":1008,\"pressure_in\":30.2,\"precip_mm\":0,\"precip_in\":0,\"humidity\":66,\"cloud\":50,\"feelslike_c\":32.2,\"feelslike_f\":89.9,\"vis_km\":5,\"vis_miles\":3,\"uv\":8,\"gust_mph\":7.2,\"gust_kph\":11.5}}";
+  deserializeJson(doc, json);
+  JsonObject location = doc["location"];
+  const char* location_name = location["name"]; // "Hanoi"
+  const char* location_region = location["region"]; // "Hanoi"
+  const char* location_country = location["country"]; // "Vietnam"
+  JsonObject current = doc["current"];
+  long current_last_updated_epoch = current["last_updated_epoch"]; 
+  const char* current_last_updated = current["last_updated"]; // 
+  int current_temp_c = current["temp_c"]; // 31
+  int current_humidity = current["humidity"]; // 66
+  Serial.print("Temperature: ");
+  Serial.println(current_temp_c);
+  Serial.println("Humidity: ");
+  Serial.println(current_humidity);
+  Serial.print("Sending packet: ");
+//  Serial.println(counter);
+  //Send LoRa packet to receiver
+  LoRa.beginPacket();
+  LoRa.print("Temperature: ");
+  LoRa.print(current_temp_c);
+  String Temp = String(current_temp_c);
+  LoRa.print("c");
+  LoRa.print("Humidity: ");
+  LoRa.print(current_humidity);
+  String Humidity = String(current_humidity);
+  LoRa.endPacket();
+  display.clear();
+  display.setTextAlignment(TEXT_ALIGN_LEFT);
+  display.setFont(ArialMT_Plain_16);
+  display.drawString(0, 23, "Temperature:");
+  display.drawString(94, 23, Temp);
+  display.drawString(0, 38, "Humidity:");
+  display.drawString(70, 38, Humidity);
+   display.display();
+  delay(5000);
+}
+  else {
+    Serial.println("Error on HTTP request");
+  }
+  https.end();
+  count++; 
+}
